@@ -1,0 +1,211 @@
+-- Universal Time Stop with Dragable Clock GUI (R6 Optimized)
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+-- 1. สร้างระบบ GUI นาฬิกา
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+if PlayerGui:FindFirstChild("TimeStopGui") then PlayerGui.TimeStopGui:Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "TimeStopGui"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = PlayerGui
+
+-- แผงควบคุมหลัก (สำหรับใช้ลากขยับ)
+local MainContainer = Instance.new("Frame")
+MainContainer.Name = "MainContainer"
+MainContainer.Size = UDim2.new(0, 200, 0, 250)
+MainContainer.Position = UDim2.new(0.5, -100, 0.1, 0)
+MainContainer.BackgroundTransparency = 1
+MainContainer.Parent = ScreenGui
+
+-- ตัวเรือนนาฬิกา (Clock Face)
+local ClockFrame = Instance.new("Frame")
+ClockFrame.Name = "ClockFrame"
+ClockFrame.Size = UDim2.new(0, 200, 0, 200)
+ClockFrame.Position = UDim2.new(0, 0, 0, 0)
+ClockFrame.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+ClockFrame.BorderSizePixel = 4
+ClockFrame.BorderColor3 = Color3.fromRGB(40, 45, 55)
+ClockFrame.Parent = MainContainer
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(1, 0)
+UICorner.Parent = ClockFrame
+
+local CenterDot = Instance.new("Frame", ClockFrame)
+CenterDot.Size = UDim2.new(0, 12, 0, 12)
+CenterDot.Position = UDim2.new(0.5, -6, 0.5, -6)
+CenterDot.BackgroundColor3 = Color3.fromRGB(40, 45, 55)
+CenterDot.ZIndex = 5
+Instance.new("UICorner", CenterDot).CornerRadius = UDim.new(1,0)
+
+-- เข็มยาว (Minute Hand)
+local MinuteHand = Instance.new("Frame")
+MinuteHand.Name = "MinuteHand"
+MinuteHand.Size = UDim2.new(0, 4, 0, 70)
+MinuteHand.AnchorPoint = Vector2.new(0.5, 1)
+MinuteHand.Position = UDim2.new(0.5, 0, 0.5, 0)
+MinuteHand.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+MinuteHand.BorderSizePixel = 0
+MinuteHand.Parent = ClockFrame
+
+-- เข็มสั้น (Hour Hand)
+local HourHand = Instance.new("Frame")
+HourHand.Name = "HourHand"
+HourHand.Size = UDim2.new(0, 6, 0, 45)
+HourHand.AnchorPoint = Vector2.new(0.5, 1)
+HourHand.Position = UDim2.new(0.5, 0, 0.5, 0)
+HourHand.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+HourHand.BorderSizePixel = 0
+HourHand.Parent = ClockFrame
+
+-- ปุ่มกดสั่งการ (ผูกติดไปกับแผงหลัก)
+local TriggerButton = Instance.new("TextButton")
+TriggerButton.Size = UDim2.new(0, 140, 0, 35)
+TriggerButton.Position = UDim2.new(0.5, -70, 0, 210)
+TriggerButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+TriggerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+TriggerButton.Font = Enum.Font.SourceSansBold
+TriggerButton.TextSize = 20
+TriggerButton.Text = "STOP TIME"
+TriggerButton.Parent = MainContainer
+Instance.new("UICorner", TriggerButton).CornerRadius = UDim.new(0, 8)
+
+-- ==========================================
+-- 🛠️ ระบบลากวาง GUI (Smooth Draggable Script)
+-- ==========================================
+local dragging, dragInput, dragStart, startPos
+
+local function update(input)
+ local delta = input.Position - dragStart
+ MainContainer.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+ClockFrame.InputBegan:Connect(function(input)
+ if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+  dragging = true
+  dragStart = input.Position
+  startPos = MainContainer.Position
+  
+  input.Changed:Connect(function()
+   if input.UserInputState == Enum.UserInputState.End then
+    dragging = false
+   end
+  end)
+ end
+end)
+
+ClockFrame.InputChanged:Connect(function(input)
+ if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+  dragInput = input
+ end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+ if input == dragInput and dragging then
+  update(input)
+ end
+end)
+-- ==========================================
+
+-- 2. ระบบคำนวณการเดินของเข็มนาฬิกา
+local TimeIsStopped = false
+local FakeTime = 0
+
+RunService.RenderStepped:Connect(function(dt)
+ if not TimeIsStopped then
+  FakeTime = FakeTime + dt * 20
+  MinuteHand.Rotation = FakeTime * 6
+  HourHand.Rotation = FakeTime * 0.5
+ end
+end)
+
+-- 3. ระบบควบคุมการหยุดเวลาและการคืนค่าปกติ
+local SavedStates = {}
+
+local function ToggleTimeStop()
+ if TimeIsStopped then
+  -- >>> ปลดปล่อยเวลา (UN-TIMESTOP) <<<
+  TimeIsStopped = false
+  TriggerButton.Text = "STOP TIME"
+  TriggerButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+  
+  local Sound = Instance.new("Sound", workspace)
+  Sound.SoundId = "rbxassetid://9114227092" 
+  Sound.Volume = 1
+  Sound:Play()
+  game:GetService("Debris"):AddItem(Sound, 2)
+  
+  local CC = Lighting:FindFirstChild("TimeStopCC")
+  if CC then CC:Destroy() end
+  
+  for _, data in ipairs(SavedStates) do
+   if data.Instance and data.Instance.Parent then
+    if data.Instance:IsA("BasePart") then
+     data.Instance.Anchored = data.Anchored
+     data.Instance.AssemblyLinearVelocity = data.Velocity
+     data.Instance.AssemblyAngularVelocity = data.AngularVelocity
+    elseif data.Instance:IsA("Humanoid") then
+     data.Instance.WalkSpeed = data.WalkSpeed
+     data.Instance.JumpPower = data.JumpPower
+    end
+   end
+  end
+  table.clear(SavedStates)
+ else
+  -- >>> แช่แข็งเวลา (TIMESTOP) <<<
+  TimeIsStopped = true
+  TriggerButton.Text = "RESUME"
+  TriggerButton.BackgroundColor3 = Color3.fromRGB(40, 160, 80)
+  
+  local CC = Instance.new("ColorCorrectionEffect", Lighting)
+  CC.Name = "TimeStopCC"
+  CC.Saturation = -0.8
+  CC.Contrast = 0.2
+  CC.Enabled = true
+  
+  local Sound = Instance.new("Sound", workspace)
+  Sound.SoundId = "rbxassetid://130113524"
+  Sound.Volume = 1
+  Sound:Play()
+  game:GetService("Debris"):AddItem(Sound, 2)
+  
+  task.spawn(function()
+   for i = 1, 10 do
+    MinuteHand.Rotation = MinuteHand.Rotation + math.random(-4, 4)
+    task.wait(0.01)
+   end
+  end)
+
+  for _, obj in ipairs(workspace:GetDescendants()) do
+   if obj:IsA("BasePart") and not obj:IsDescendantOf(Character) and not obj.Anchored then
+    table.insert(SavedStates, {
+     Instance = obj,
+     Anchored = obj.Anchored,
+     Velocity = obj.AssemblyLinearVelocity,
+     AngularVelocity = obj.AssemblyAngularVelocity
+    })
+    obj.AssemblyLinearVelocity = Vector3.new(0,0,0)
+    obj.AssemblyAngularVelocity = Vector3.new(0,0,0)
+    obj.Anchored = true
+   elseif obj:IsA("Humanoid") and not obj:IsDescendantOf(Character) then
+    table.insert(SavedStates, {
+     Instance = obj,
+     WalkSpeed = obj.WalkSpeed,
+     JumpPower = obj.JumpPower
+    })
+    obj.WalkSpeed = 0
+    obj.JumpPower = 0
+   end
+  end
+ end
+end
+
+TriggerButton.MouseButton1Click:Connect(ToggleTimeStop)
+print("⏰ [Draggable Time Stop] รันระบบสำเร็จ! คุณสามารถคลิกค้างที่ตัวนาฬิกาเพื่อลากขยับตำแหน่งได้แล้วครับ")
